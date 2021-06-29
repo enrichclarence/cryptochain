@@ -8,7 +8,10 @@ const TransactionPool = require('./wallet/transaction-pool');
 const Wallet = require('./wallet');
 const TransactionMiner = require('./app/transaction-miner');
 
-const isDevelopment = process.env.EVN === 'development';
+const isDevelopment = process.env.ENV === 'development';
+
+const DEFAULT_PORT = 3000;
+const ROOT_NODE_ADDRESS = `http://localhost:${DEFAULT_PORT}`;
 
 const app = express();
 const blockchain = new Blockchain();
@@ -17,15 +20,31 @@ const wallet = new Wallet();
 const pubsub = new PubSub({ blockchain, transactionPool, wallet });
 const transactionMiner = new TransactionMiner({ blockchain, transactionPool, wallet, pubsub });
 
-const DEFAULT_PORT = 3000;
-const ROOT_NODE_ADDRESS = `http://localhost:${DEFAULT_PORT}`;
-
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
 app.get('/api/blocks', (req, res) => {
     res.json(blockchain.chain);
 });
+
+app.get('/api/blocks/length', (req, res) => {
+    res.json(blockchain.chain.length);
+});
+
+app.get('/api/blocks/:id', (req, res) => {
+    const { id } = req.params;
+    const { length } = blockchain.chain;
+  
+    const blocksReversed = blockchain.chain.slice().reverse();
+  
+    let startIndex = (id-1) * 5;
+    let endIndex = id * 5;
+  
+    startIndex = startIndex < length ? startIndex : length;
+    endIndex = endIndex < length ? endIndex : length;
+  
+    res.json(blocksReversed.slice(startIndex, endIndex));
+  });
 
 app.post('/api/mine', (req, res)=> {
     const { data } = req.body;
@@ -83,6 +102,20 @@ app.get('/api/wallet-info', (req, res) => {
     });
 });
 
+app.get('/api/known-addresses', (req, res) => {
+    const addressMap = {};
+
+    for (let block of blockchain.chain) {
+        for (let transaction of block.data) {
+            const recipient = Object.keys(transaction.outputMap);
+
+            recipient.forEach(recipient => addressMap[recipient] = recipient);
+        }
+    }
+
+    res.json(Object.keys(addressMap));
+});
+
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'client/dist/index.html'));
 });
@@ -107,7 +140,7 @@ const syncWithRootState = () => {
     });
 };
 
-if (isDevelopment) {
+//if (isDevelopment) {
     const walletFoo = new Wallet();
     const walletBar = new Wallet();
 
@@ -131,7 +164,7 @@ if (isDevelopment) {
         wallet: walletBar, recipient: wallet.publicKey, amount: 15
     });
 
-    for (let i=0; i<10; i++) {
+    for (let i=0; i<20; i++) {
         if(i%3 === 0) {
             walletAction();
             walletFooAction();
@@ -145,7 +178,7 @@ if (isDevelopment) {
 
         transactionMiner.mineTransactions();
     }
-}
+//}
 
 let PEER_PORT;
 
